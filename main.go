@@ -20,5 +20,5 @@ func main() {
 	router.PUT("/tasks/:id", taskHandler.UpdateTask)
 	router.DELETE("/tasks/:id", taskHandler.DeleteTask)
 
-	router.Run(":8000")
+	router.Run(":8080")
 }
