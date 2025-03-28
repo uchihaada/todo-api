@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type TaskHandler struct { // ✅ Fixed struct name
+type TaskHandler struct {
 	Storage *storage.FileStorage
 }
 
@@ -35,7 +35,7 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 	}
 
 	tasks, _ := h.Storage.LoadTasks()
-	newTask.ID = len(tasks) + 1 // Assign ID
+	newTask.ID = len(tasks) + 1
 	tasks = append(tasks, newTask)
 
 	h.Storage.SaveTasks(tasks)
@@ -49,7 +49,7 @@ func (h *TaskHandler) UpdateTask(c *gin.Context) {
 		return
 	}
 
-	var updatedTask models.Task // ✅ Fixed typo
+	var updatedTask models.Task
 	if err := c.ShouldBindJSON(&updatedTask); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
@@ -58,7 +58,7 @@ func (h *TaskHandler) UpdateTask(c *gin.Context) {
 	tasks, _ := h.Storage.LoadTasks()
 	for i, task := range tasks {
 		if task.ID == id {
-			updatedTask.ID = id // ✅ Preserve original ID
+			updatedTask.ID = id
 			tasks[i] = updatedTask
 			h.Storage.SaveTasks(tasks)
 			c.JSON(http.StatusOK, updatedTask)
@@ -77,7 +77,7 @@ func (h *TaskHandler) DeleteTask(c *gin.Context) {
 	}
 
 	tasks, _ := h.Storage.LoadTasks()
-	newTasks := []models.Task{} // ✅ Renamed for clarity
+	newTasks := []models.Task{}
 
 	for _, task := range tasks {
 		if task.ID != id {
