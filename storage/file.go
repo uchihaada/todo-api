@@ -8,15 +8,17 @@ import (
 )
 
 type FileStorage struct {
-	FilePath string
-	taskChan chan []models.Task
-	wg       sync.WaitGroup
+	FilePath  string
+	taskChan  chan []models.Task
+	closechan chan struct{}
+	wg        sync.WaitGroup
 }
 
 func NewFileStorage(filepath string) *FileStorage {
 	fs := &FileStorage{
-		FilePath: filepath,
-		taskChan: make(chan []models.Task, 1),
+		FilePath:  filepath,
+		taskChan:  make(chan []models.Task, 10),
+		closechan: make(chan struct{}),
 	}
 	fs.wg.Add(1)
 	go fs.listenForUpdates()
@@ -25,16 +27,21 @@ func NewFileStorage(filepath string) *FileStorage {
 
 func (fs *FileStorage) listenForUpdates() {
 	defer fs.wg.Done()
-	for tasks := range fs.taskChan {
-		file, err := os.Create(fs.FilePath)
-		if err != nil {
-			continue
-		}
-		encoder := json.NewEncoder(file)
-		err = encoder.Encode(tasks)
-		file.Close()
-		if err != nil {
-			continue
+	for {
+		select {
+		case task := <-fs.taskChan:
+			file, err := os.Create(fs.FilePath)
+			if err != nil {
+				continue
+			}
+			encoder := json.NewEncoder(file)
+			err = encoder.Encode(task)
+			file.Close()
+			if err != nil {
+				continue
+			}
+		case <-fs.closechan:
+			return
 		}
 	}
 }
@@ -66,5 +73,6 @@ func (fs *FileStorage) SaveTasks(tasks []models.Task) {
 
 func (fs *FileStorage) Close() {
 	close(fs.taskChan)
+	close(fs.closechan)
 	fs.wg.Wait()
 }
