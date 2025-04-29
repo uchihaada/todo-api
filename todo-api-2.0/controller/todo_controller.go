@@ -3,7 +3,6 @@ package controller
 import (
 	"fmt"
 	"net/http"
-	"sync"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -17,29 +16,44 @@ func CreateTask(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
 		return
 	}
-	if err := config.DB.Create(&todo); err != nil {
+
+	if err := config.DB.Create(&todo).Error; err != nil {
+		fmt.Println("Error creating task:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create task"})
 		return
 	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "Task created successfully", "task": todo})
 }
 
 func GetTasks(c *gin.Context) {
 	var todos []models.Todo
-	if err := config.DB.Find(&todos); err != nil {
+	if err := config.DB.Find(&todos).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tasks"})
 		return
 	}
+
+	if len(todos) == 0 {
+		c.JSON(http.StatusOK, gin.H{"message": "No tasks found", "tasks": []models.Todo{}})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{"tasks": todos})
 }
 
 func GetTasksById(c *gin.Context) {
 	id := c.Param("id")
 	var todo models.Todo
-	if err := config.DB.Where("id = ?", id).First(&todo); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+
+	if err := config.DB.Where("id = ?", id).First(&todo).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch task"})
 		return
 	}
+
 	c.JSON(http.StatusOK, gin.H{"task": todo})
 }
 
@@ -52,8 +66,8 @@ func UpdateTask(c *gin.Context) {
 		return
 	}
 
-	if result := config.DB.Where("id = ?", id).First(&todo); result.Error != nil {
-
+	var existingTodo models.Todo
+	if result := config.DB.Where("id = ?", id).First(&existingTodo); result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
 			return
@@ -63,71 +77,63 @@ func UpdateTask(c *gin.Context) {
 		}
 	}
 
-	if todo.Completed {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Task already completed"})
+	if err := config.DB.Model(&existingTodo).Update("title", todo.Title).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update task title"})
 		return
 	}
 
-	if err := config.DB.Model(&todo).Updates(models.Todo{Title: todo.Title, Completed: todo.Completed}); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update task"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "Task updated successfully", "task": todo})
+	c.JSON(http.StatusOK, gin.H{"message": "Task title updated successfully", "task": existingTodo})
 }
 
 func MarksTaskAsCompleted(c *gin.Context) {
 	id := c.Param("id")
 	var todo models.Todo
-	if err := c.ShouldBindJSON(&todo); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
-		return
-	}
-	if result := config.DB.Where("id = ?", id).Find(&todo); result.Error != nil {
-		if result.Error == gorm.ErrRecordNotFound {
+
+	// Fetch the task by ID
+	if err := config.DB.Where("id = ?", id).First(&todo).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
 			return
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch task"})
-			return
 		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch task"})
+		return
 	}
+
+	// Check if the task is already completed
 	if todo.Completed {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Task already completed"})
 		return
 	}
-	if err := config.DB.Model(&todo).Updates(models.Todo{Title: todo.Title, Completed: true}); err != nil {
+
+	// Mark the task as completed
+	if err := config.DB.Model(&todo).Update("completed", true).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update task"})
 		return
 	}
+
+	// Return the updated task
 	c.JSON(http.StatusOK, gin.H{"message": "Task marked as completed successfully", "task": todo})
 }
 
 func DeleteTask(c *gin.Context) {
-
+	// Fetch all completed tasks
 	var tasks []models.Todo
-
-	if err := config.DB.Where("Completed = ?", true).Find(&tasks).Error; err != nil {
+	if err := config.DB.Where("completed = ?", true).Find(&tasks).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tasks"})
 		return
 	}
 
+	// Check if there are no completed tasks
 	if len(tasks) == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "No completed tasks found"})
 		return
 	}
 
-	var wg sync.WaitGroup
-	for _, task := range tasks {
-		wg.Add(1)
-		go func(t models.Todo) {
-			defer wg.Done()
-			if err := config.DB.Delete(&t).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to delete task with id %d", t.ID)})
-				return
-			}
-		}(task)
+	// Delete all completed tasks
+	if err := config.DB.Where("completed = ?", true).Delete(&models.Todo{}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete completed tasks"})
+		return
 	}
-	wg.Wait()
 
 	c.JSON(http.StatusOK, gin.H{"message": "All completed tasks deleted successfully"})
 }

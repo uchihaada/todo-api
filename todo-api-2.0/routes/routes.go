@@ -10,6 +10,6 @@ func SetUpRoutes(r *gin.Engine) {
 	r.GET("/api/todo/:id", controller.GetTasksById)
 	r.POST("/api/todo", controller.CreateTask)
 	r.PUT("/api/todo/:id", controller.UpdateTask)
-	r.DELETE("/api/todo/:id", controller.DeleteTask)
+	r.DELETE("/api/todo", controller.DeleteTask)
 	r.PATCH("/api/todo/:id/markascomplete", controller.MarksTaskAsCompleted) // Use PATCH here
 }
